@@ -110,7 +110,7 @@ class GaussSeidelSolver:
         print(f"Использованная погрешность: {self.tolerance:.{decimals}f}")
         print("Вектор погрешностей:")
         for i, err in enumerate(error):
-            print(f"e[{i + 1}] = {err:.{decimals}f}")
+            print(f"e[{i + 1}] = {err:.{decimals+1}f}")
         if self.matrix_A is not None:
             norm_2 = np.linalg.norm(self.matrix_A, ord=2)
             print(f"Евклидова норма матрицы A: {norm_2:.{decimals}f}")

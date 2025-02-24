@@ -5,7 +5,7 @@ from typing import Tuple
 
 
 class GaussSeidelSolver:
-    def __init__(self, max_iterations: int = 1000):
+    def __init__(self, max_iterations: int = 1000000):
         self.max_iterations = max_iterations
         self.tolerance = None
         self.matrix_A = None
@@ -14,20 +14,70 @@ class GaussSeidelSolver:
         n = len(A)
         for i in range(n):
             sum_abs = sum(abs(A[i, j]) for j in range(n) if j != i)
-            if abs(A[i, i]) <= sum_abs:
+            if abs(A[i, i]) <= sum_abs :
                 return False
         return True
 
+    def check_zeros_on_diagonal(self, A: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Проверяет наличие нулей на главной диагонали и переставляет строки, если такие нули есть.
+        """
+        n = len(A)
+        for i in range(n):
+            if A[i, i] == 0:
+                # Находим строку с ненулевым элементом в текущем столбце и меняем их местами
+                for j in range( n):
+                    if A[j, i] != 0:
+                        # Переставляем строки
+                        A[[i, j], :] = A[[j, i], :]
+                        b[i], b[j] = b[j], b[i]
+                        print(f"Переставлены строки {i + 1} и {j + 1} для устранения деления на ноль.")
+                        break
+                else:
+                    # Если не удается найти строку с ненулевым элементом, выбрасываем ошибку
+                    raise ValueError(f"Невозможно устранить деление на ноль в A[{i}, {i}] и в столбце.")
+        return A, b
+
+    def process_matrix(self, A: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        # Проверяем, есть ли нули на главной диагонали
+
+        # Проверяем, является ли матрица диагонально доминирующей
+        if not self.is_diagonally_dominant(A):
+            # Если не является, пытаемся привести её к диагонально доминирующему виду
+            A, b, success = self.make_diagonally_dominant(A, b)
+            if not success:
+                print("Не удалось привести матрицу к диагонально доминирующей форме. Сходимость не гарантируется.")
+                choice = input("Продолжить? (да/нет): ").lower()
+                if choice != 'да':
+                    exit()  # Выход из программы, если пользователь не согласен продолжать
+            else:
+                print("Матрица преобразована для диагонального преобладания.")
+
+        # Проверяем ещё раз на нули после диагонального преобладания
+        A, b = self.check_zeros_on_diagonal(A, b)
+
+        # Копируем матрицу A для дальнейших вычислений
+        self.matrix_A = A.copy()
+        return A, b
+
     def make_diagonally_dominant(self, A: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray, bool]:
         n = len(A)
-        indices = list(range(n))
-
-        for perm in permutations(indices):
-            permuted_A = A[list(perm), :]
-            permuted_b = b[list(perm)]
-            if self.is_diagonally_dominant(permuted_A):
-                return permuted_A, permuted_b, True
-        return A, b, False
+        # Индексы строк, которые будем переставлять
+        for i in range(n):
+            # Находим строку с максимальным элементом в столбце i (по абсолютной величине)
+            max_row = i
+            for j in range(n):
+                if abs(A[j, i]) >= abs(A[max_row, i]):
+                    max_row = j
+            # Если максимальный элемент в столбце не на диагонали, переставляем строки
+            if max_row != i:
+                A[[i, max_row]] = A[[max_row, i]]
+                b[i], b[max_row] = b[max_row], b[i]
+        # После перестановок проверяем, стала ли матрица диагонально доминирующей
+        if self.is_diagonally_dominant(A):
+            return A, b, True
+        else:
+            return A, b, False
 
     def input_matrix(self, n: int) -> Tuple[np.ndarray, np.ndarray]:
         A = np.zeros((n, n))
@@ -44,18 +94,7 @@ class GaussSeidelSolver:
             raise ValueError("Размер вектора b не соответствует матрице")
         return A, b
 
-    def process_matrix(self, A: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        if not self.is_diagonally_dominant(A):
-            A, b, success = self.make_diagonally_dominant(A, b)
-            if not success:
-                print("Не удалось привести матрицу к диагонально доминирующей форме. Сходимость не гарантируется.")
-                choice = input("Продолжить? (да/нет): ").lower()
-                if choice != 'да':
-                    exit()
-            else:
-                print("Матрица преобразована для диагонального преобладания.")
-        self.matrix_A = A.copy()
-        return A, b
+
 
     def solve(self, A: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, int, np.ndarray]:
         if self.tolerance is None:
@@ -66,8 +105,11 @@ class GaussSeidelSolver:
         while iterations < self.max_iterations:
             x_new = np.copy(x)
             for i in range(n):
-                sum_ax = np.dot(A[i, :i], x_new[:i]) + np.dot(A[i, i + 1:], x[i + 1:])
+                sum_left = np.dot(A[i, :i], x_new[:i])  # элементы до диагонали
+                sum_right = np.dot(A[i, i + 1:], x[i + 1:])  # элементы после диагонали
+                sum_ax = sum_left + sum_right
                 x_new[i] = (b[i] - sum_ax) / A[i, i]
+
             error = np.abs(x_new - x)
             if np.max(error) < self.tolerance:
                 break
@@ -100,6 +142,7 @@ class GaussSeidelSolver:
             print(f"Файл {filename} не найден.")
         except ValueError as e:
             print(f"Ошибка в формате файла: {e}")
+
 
     def print_results(self, solution: np.ndarray, iterations: int, error: np.ndarray) -> None:
         decimals = max(1, ceil(-log10(self.tolerance)))
